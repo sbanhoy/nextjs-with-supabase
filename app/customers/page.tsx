@@ -1,3 +1,4 @@
+import ContactButtons from "@/components/ContactButtons";
 import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -122,13 +123,7 @@ async function Content({ searchParams }: { searchParams: Promise<{ stage?: strin
               <td className="text-xs">{lastAt(c.id) ? new Date(lastAt(c.id)!).toLocaleDateString("vi-VN") : <span className="text-red-500">chưa</span>}</td>
               <td className="text-right font-semibold text-[#0046ff]">{score(c.id) != null ? Number(score(c.id)).toFixed(0) : "–"}</td>
               <td>
-                <form action={logInteraction} className="flex gap-1 p-1">
-                  <input type="hidden" name="id" value={c.id} />
-                  {[["call", "📞"], ["zalo", "💬"], ["meeting", "🤝"]].map(([ch, ic]) => (
-                    <button key={ch} name="channel" value={ch} title={ch} className="px-2 py-1 border rounded text-xs">{ic}</button>
-                  ))}
-                  {c.stage === "lead" && <button name="convert" value="1" className="px-2 py-1 rounded text-xs bg-green-600 text-white">→ KH</button>}
-                </form>
+                <ContactButtons cid={c.id} phone={c.phone} stage={c.stage} name={c.full_name} />
               </td>
             </tr>))}
           </tbody>
