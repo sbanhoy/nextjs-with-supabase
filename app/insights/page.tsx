@@ -1,8 +1,7 @@
+import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-
-export const dynamic = "force-dynamic";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -40,8 +39,9 @@ const FEAT: Record<string, string> = {
   f_segment: "Phân khúc", f_maturity_soon: "Sắp đáo hạn", f_churn_signal: "Tín hiệu churn", f_life_event: "Sự kiện",
 };
 const SEG: Record<string, string> = { mass: "Phổ thông", affluent: "Khá giả", premier: "Premier", private: "Private" };
+const TAB: Record<string, string> = { open: "Mở", accepted: "Đã nhận", converted: "Đã chốt", dismissed: "Bỏ qua" };
 
-export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+async function InsightsContent({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status = "open" } = await searchParams;
   const sb = await getSupabase();
   const { data: { user } } = await sb.auth.getUser();
@@ -74,10 +74,10 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           <h1 className="text-2xl font-bold">Insight hôm nay</h1>
         </div>
         <div className="flex gap-2 text-xs">
-          {["open", "accepted", "converted", "dismissed"].map((s) => (
+          {Object.keys(TAB).map((s) => (
             <a key={s} href={`/insights?status=${s}`}
               className={`px-3 py-1.5 rounded-full border ${status === s ? "bg-[#0046ff] text-white border-[#0046ff]" : "bg-white hover:bg-gray-50"}`}>
-              {{ open: "Mở", accepted: "Đã nhận", converted: "Đã chốt", dismissed: "Bỏ qua" }[s]} ({count(s)})
+              {TAB[s]} ({count(s)})
             </a>
           ))}
         </div>
@@ -119,7 +119,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
               </ul>
             </details>
 
-            {status === "open" && (
+            {status === "open" ? (
               <form action={feedback} className="flex flex-wrap items-center gap-2 pt-1">
                 <input type="hidden" name="id" value={i.id} />
                 <button name="action" value="accepted" className="px-3 py-1.5 text-xs rounded-lg bg-[#0046ff] text-white">Nhận</button>
@@ -133,11 +133,20 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                 </select>
                 <button name="action" value="dismissed" className="px-3 py-1.5 text-xs rounded-lg border">Bỏ qua</button>
               </form>
+            ) : (
+              <div className="text-xs text-gray-400">Cập nhật: {new Date(i.updated_at).toLocaleString("vi-VN")}</div>
             )}
-            {status !== "open" && <div className="text-xs text-gray-400">Cập nhật: {new Date(i.updated_at).toLocaleString("vi-VN")}</div>}
           </div>
         ))}
       </section>
     </main>
+  );
+}
+
+export default function InsightsPage(props: { searchParams: Promise<{ status?: string }> }) {
+  return (
+    <Suspense fallback={<main className="max-w-5xl mx-auto p-8 text-gray-500">Đang tải insight…</main>}>
+      <InsightsContent searchParams={props.searchParams} />
+    </Suspense>
   );
 }
