@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { requireAdminUser } from "@/lib/supabase/authorization";
 
 const KEYS = ["f_aum","f_recency","f_product_gap","f_segment","f_maturity_soon","f_churn_signal","f_life_event"] as const;
 const LABEL: Record<string, string> = {
@@ -24,34 +25,50 @@ async function getSupabase() {
 
 async function saveVersion(fd: FormData) {
   "use server";
-  const sb = await getSupabase();
-  const raw = Object.fromEntries(KEYS.map((k) => [k, Math.max(0, Number(fd.get(k) ?? 0))]));
-  const tot = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
-  const weights = Object.fromEntries(KEYS.map((k) => [k, +(raw[k] / tot).toFixed(4)]));
-  const { data: last } = await sb.from("weight_matrix").select("version").order("version", { ascending: false }).limit(1).single();
-  await sb.from("weight_matrix").insert({
-    version: (last?.version ?? 0) + 1, name: String(fd.get("name") || "Phiên bản mới"),
-    notes: String(fd.get("notes") || ""), weights, is_active: false,
+  const { supabase: sb } = await requireAdminUser();
+  const entries = KEYS.map((k) => {
+    const value = Number(fd.get(k) ?? 0);
+    if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error("Trọng số phải nằm trong khoảng 0–100.");
+    return [k, value] as const;
   });
+  const raw = Object.fromEntries(entries) as Record<(typeof KEYS)[number], number>;
+  const tot = Object.values(raw).reduce((a, b) => a + b, 0);
+  if (tot <= 0) throw new Error("Tổng trọng số phải lớn hơn 0.");
+  const weights = Object.fromEntries(KEYS.map((k) => [k, +(raw[k] / tot).toFixed(4)]));
+  const { data: last, error: readError } = await sb.from("weight_matrix").select("version").order("version", { ascending: false }).limit(1).maybeSingle();
+  if (readError) throw new Error("Không đọc được phiên bản trọng số hiện tại.");
+  const { error: insertError } = await sb.from("weight_matrix").insert({
+    version: (last?.version ?? 0) + 1, name: String(fd.get("name") || "Phiên bản mới").slice(0, 120),
+    notes: String(fd.get("notes") || "").slice(0, 2000), weights, is_active: false,
+  });
+  if (insertError) throw new Error("Không thể lưu bản nháp trọng số.");
   revalidatePath("/admin/weights");
 }
 async function activate(fd: FormData) {
   "use server";
-  const sb = await getSupabase();
-  await sb.rpc("fn_activate_weight_matrix", { p_id: String(fd.get("id")) });
-  await sb.rpc("fn_rescore_open_insights");
+  const { supabase: sb } = await requireAdminUser();
+  const id = String(fd.get("id") || "");
+  if (!id || id.length > 128) throw new Error("Mã phiên bản không hợp lệ.");
+  const { error: activateError } = await sb.rpc("fn_activate_weight_matrix", { p_id: id });
+  if (activateError) throw new Error("Không thể kích hoạt phiên bản trọng số.");
+  const { error: rescoreError } = await sb.rpc("fn_rescore_open_insights");
+  if (rescoreError) throw new Error("Đã kích hoạt trọng số nhưng chưa chấm lại insight.");
   revalidatePath("/admin/weights"); revalidatePath("/insights");
 }
 async function regenerate() {
   "use server";
-  const sb = await getSupabase();
-  await sb.rpc("fn_expire_insights"); await sb.rpc("fn_generate_insights");
+  const { supabase: sb } = await requireAdminUser();
+  const { error: expireError } = await sb.rpc("fn_expire_insights");
+  if (expireError) throw new Error("Không thể đóng insight cũ.");
+  const { error: generateError } = await sb.rpc("fn_generate_insights");
+  if (generateError) throw new Error("Không thể sinh insight mới.");
   revalidatePath("/admin/weights"); revalidatePath("/insights");
 }
 async function propose() {
   "use server";
-  const sb = await getSupabase();
-  await sb.rpc("fn_propose_weights");
+  const { supabase: sb } = await requireAdminUser();
+  const { error } = await sb.rpc("fn_propose_weights");
+  if (error) throw new Error("Không thể tạo đề xuất trọng số.");
   revalidatePath("/admin/weights");
 }
 

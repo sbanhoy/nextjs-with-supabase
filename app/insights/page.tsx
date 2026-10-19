@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { requireAuthorizedUser } from "@/lib/supabase/authorization";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -16,12 +17,17 @@ async function getSupabase() {
 
 async function feedback(formData: FormData) {
   "use server";
-  const sb = await getSupabase();
-  await sb.rpc("fn_insight_feedback", {
-    p_insight_id: String(formData.get("id")),
-    p_action: String(formData.get("action")),
-    p_outcome: (formData.get("reason") as string) || null,
+  const { supabase: sb } = await requireAuthorizedUser();
+  const id = String(formData.get("id") || "");
+  const action = String(formData.get("action") || "");
+  if (!id || id.length > 128 || !["accepted", "converted", "dismissed"].includes(action)) {
+    throw new Error("Dữ liệu phản hồi không hợp lệ.");
+  }
+  const outcome = String(formData.get("reason") || "").slice(0, 500) || null;
+  const { error } = await sb.rpc("fn_insight_feedback", {
+    p_insight_id: id, p_action: action, p_outcome: outcome,
   });
+  if (error) throw new Error("Không thể lưu phản hồi insight.");
   revalidatePath("/insights");
 }
 
@@ -50,7 +56,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
     return (
       <main className="max-w-3xl mx-auto p-8 text-center">
         <h1 className="text-xl font-semibold mb-2">Vui lòng đăng nhập</h1>
-        <a href="/" className="text-blue-600 underline">Về trang chủ để đăng nhập</a>
+        <a href="/auth/login" className="text-blue-600 underline">Đăng nhập</a>
       </main>
     );
   }
