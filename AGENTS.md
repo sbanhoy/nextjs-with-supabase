@@ -76,7 +76,13 @@ Không `truncate`, không `drop table`, không `delete from customers` hàng lo�
 
 ---
 
-## 3. Kiến trúc as-built (trạng thái hiện tại, đã chạy production)
+## 3. Kiến trúc khai báo trong tài liệu (cần xác minh ngoài repository)
+
+> **Trạng thái kiểm toán 2026-10-19:** Các thông tin hạ tầng trong mục này là nội dung bàn giao,
+> không phải bằng chứng tự thân rằng production đang chạy đúng như mô tả. Repository hiện không
+> có `supabase/migrations/`; các tích hợp Supabase, Google Sheets/Apps Script, webhook, cron,
+> Vercel environment và domain phải được đối chiếu trong dashboard tương ứng trước khi triển khai.
+> Không suy diễn schema, RLS policy, secrets hoặc trạng thái production từ tài liệu này.
 
 ### 3.1 Hạ tầng
 | Thành phần | Giá trị |
