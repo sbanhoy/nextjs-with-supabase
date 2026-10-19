@@ -1,22 +1,13 @@
 import { Suspense } from "react";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-
-async function getSupabase() {
-  const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY ??
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-}
+import { redirect } from "next/navigation";
+import { getSupabase } from "@/lib/supabase/server";
 
 async function feedback(formData: FormData) {
   "use server";
   const sb = await getSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) throw new Error("Chưa đăng nhập");
   await sb.rpc("fn_insight_feedback", {
     p_insight_id: String(formData.get("id")),
     p_action: String(formData.get("action")),
@@ -47,12 +38,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
   const { data: { user } } = await sb.auth.getUser();
 
   if (!user) {
-    return (
-      <main className="max-w-3xl mx-auto p-8 text-center">
-        <h1 className="text-xl font-semibold mb-2">Vui lòng đăng nhập</h1>
-        <a href="/" className="text-blue-600 underline">Về trang chủ để đăng nhập</a>
-      </main>
-    );
+    redirect("/auth/login");
   }
 
   const { data: insights, error } = await sb
