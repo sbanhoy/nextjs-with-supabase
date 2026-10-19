@@ -39,9 +39,9 @@ export function LoginForm({
       });
       if (error) throw error;
       // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/protected");
+      router.push("/insights");
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred");
+      setError("Không thể đăng nhập. Vui lòng kiểm tra thông tin và thử lại.");
     } finally {
       setIsLoading(false);
     }
@@ -51,9 +51,9 @@ export function LoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
+          <CardTitle className="text-2xl">Đăng nhập</CardTitle>
           <CardDescription>
-            Enter your email below to login to your account
+            Nhập email và mật khẩu để truy cập CRM
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -77,7 +77,7 @@ export function LoginForm({
                     href="/auth/forgot-password"
                     className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                   >
-                    Forgot your password?
+                    Quên mật khẩu?
                   </Link>
                 </div>
                 <Input
@@ -90,17 +90,12 @@ export function LoginForm({
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Logging in..." : "Login"}
+                {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/auth/sign-up"
-                className="underline underline-offset-4"
-              >
-                Sign up
-              </Link>
+              Chưa được cấp tài khoản?{" "}
+              <span className="text-muted-foreground">Liên hệ quản trị viên để được cấp quyền.</span>
             </div>
           </form>
         </CardContent>

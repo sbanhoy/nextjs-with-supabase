@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { requireAuthorizedUser } from "@/lib/supabase/authorization";
 
 async function getSupabase() {
   const cookieStore = await cookies();
@@ -22,7 +23,7 @@ const toNum = (s: string) => Number(String(s || "0").replace(/[^\d.]/g, "")) || 
 
 async function addOne(fd: FormData) {
   "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
+  const { supabase: sb, user } = await requireAuthorizedUser();
   await sb.from("customers").upsert({
     rm_id: user.id, full_name: String(fd.get("full_name")), phone: String(fd.get("phone") || "") || null,
     segment: String(fd.get("segment") || "mass"), aum: toNum(String(fd.get("aum"))), aum_3m_ago: toNum(String(fd.get("aum"))),
@@ -33,7 +34,7 @@ async function addOne(fd: FormData) {
 }
 async function addBulk(fd: FormData) {
   "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
+  const { supabase: sb, user } = await requireAuthorizedUser();
   const rows = String(fd.get("bulk") || "").split(/\r?\n/).map((l) => l.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((x) => x.replace(/^"|"$/g, "").trim()))
     .filter((r) => r[0] && !/^(tên|ten|name|họ)/i.test(r[0]));
   const payload = rows.map((r) => ({
@@ -47,9 +48,9 @@ async function addBulk(fd: FormData) {
 }
 async function logInteraction(fd: FormData) {
   "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
+  const { supabase: sb, user } = await requireAuthorizedUser();
   await sb.from("interactions").insert({ customer_id: String(fd.get("id")), rm_id: user.id, channel: String(fd.get("channel")), note: "Ghi từ CRM" });
-  if (fd.get("convert") === "1") await sb.from("customers").update({ stage: "customer" }).eq("id", String(fd.get("id")));
+  if (fd.get("convert") === "1") await sb.from("customers").update({ stage: "customer" }).eq("id", String(fd.get("id"))).eq("rm_id", user.id);
   revalidatePath("/customers"); revalidatePath("/insights");
 }
 
@@ -60,7 +61,7 @@ async function Content({ searchParams }: { searchParams: Promise<{ stage?: strin
 
   let qry = sb.from("customers").select("*").order("created_at", { ascending: false }).limit(300);
   if (stage !== "all") qry = qry.eq("stage", stage);
-  if (q) qry = qry.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%`);
+  if (q) { const safeQ = q.replace(/[,%()\\\\]/g, "").slice(0, 100); if (safeQ) qry = qry.or(`full_name.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`); }
   const [{ data: cs }, { data: scores }, { data: last }] = await Promise.all([
     qry, sb.from("v_customer_scores").select("id,score"),
     sb.from("interactions").select("customer_id,occurred_at").order("occurred_at", { ascending: false }),
