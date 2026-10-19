@@ -1,17 +1,7 @@
 import ContactButtons from "@/components/ContactButtons";
 import { Suspense } from "react";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-
-async function getSupabase() {
-  const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-}
+import { getSupabase } from "@/lib/supabase/server";
 const SEG: Record<string, string> = { mass: "Phổ thông", affluent: "Khá giả", premier: "Premier", private: "Private" };
 const toDate = (s: string) => {
   const t = (s || "").trim(); if (!t) return null;
@@ -45,14 +35,6 @@ async function addBulk(fd: FormData) {
   if (payload.length) await sb.from("customers").upsert(payload, { onConflict: "phone" });
   await sb.rpc("fn_generate_insights"); revalidatePath("/customers"); revalidatePath("/insights");
 }
-async function logInteraction(fd: FormData) {
-  "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
-  await sb.from("interactions").insert({ customer_id: String(fd.get("id")), rm_id: user.id, channel: String(fd.get("channel")), note: "Ghi từ CRM" });
-  if (fd.get("convert") === "1") await sb.from("customers").update({ stage: "customer" }).eq("id", String(fd.get("id")));
-  revalidatePath("/customers"); revalidatePath("/insights");
-}
-
 async function Content({ searchParams }: { searchParams: Promise<{ stage?: string; q?: string }> }) {
   const { stage = "all", q = "" } = await searchParams;
   const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser();

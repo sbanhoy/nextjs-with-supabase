@@ -1,7 +1,6 @@
 import { Suspense } from "react";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { getSupabase } from "@/lib/supabase/server";
 
 const KEYS = ["f_aum","f_recency","f_product_gap","f_segment","f_maturity_soon","f_churn_signal","f_life_event"] as const;
 const LABEL: Record<string, string> = {
@@ -13,18 +12,18 @@ const TYPE: Record<string, string> = {
   reengage: "Tái kết nối", life_event: "Sự kiện cá nhân",
 };
 
-async function getSupabase() {
-  const cookieStore = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
+async function requireAdmin(sb: Awaited<ReturnType<typeof getSupabase>>) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) throw new Error("Chưa đăng nhập");
+  const { data: me } = await sb.from("rm_users").select("role").eq("id", user.id).single();
+  if (!me || me.role !== "admin") throw new Error("Chỉ admin mới có quyền thực hiện thao tác này");
+  return user;
 }
 
 async function saveVersion(fd: FormData) {
   "use server";
   const sb = await getSupabase();
+  await requireAdmin(sb);
   const raw = Object.fromEntries(KEYS.map((k) => [k, Math.max(0, Number(fd.get(k) ?? 0))]));
   const tot = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
   const weights = Object.fromEntries(KEYS.map((k) => [k, +(raw[k] / tot).toFixed(4)]));
@@ -38,6 +37,7 @@ async function saveVersion(fd: FormData) {
 async function activate(fd: FormData) {
   "use server";
   const sb = await getSupabase();
+  await requireAdmin(sb);
   await sb.rpc("fn_activate_weight_matrix", { p_id: String(fd.get("id")) });
   await sb.rpc("fn_rescore_open_insights");
   revalidatePath("/admin/weights"); revalidatePath("/insights");
@@ -45,12 +45,14 @@ async function activate(fd: FormData) {
 async function regenerate() {
   "use server";
   const sb = await getSupabase();
+  await requireAdmin(sb);
   await sb.rpc("fn_expire_insights"); await sb.rpc("fn_generate_insights");
   revalidatePath("/admin/weights"); revalidatePath("/insights");
 }
 async function propose() {
   "use server";
   const sb = await getSupabase();
+  await requireAdmin(sb);
   await sb.rpc("fn_propose_weights");
   revalidatePath("/admin/weights");
 }
