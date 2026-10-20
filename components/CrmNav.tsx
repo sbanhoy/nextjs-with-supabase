@@ -7,6 +7,7 @@ export default function CrmNav() {
         <span className="font-bold text-[#0046ff] mr-3">CRM Shinhan</span>
         <Link href="/insights" className={L}>Insight</Link>
         <Link href="/customers" className={L}>Khách hàng</Link>
+        <Link href="/message" className={L}>Soạn tin</Link>
         <Link href="/admin/weights" className={L}>Admin</Link>
       </div>
     </nav>
