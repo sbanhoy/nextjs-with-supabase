@@ -1,6 +1,7 @@
 import ContactButtons from "@/components/ContactButtons";
 import { Suspense } from "react";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
 const SEG: Record<string, string> = { mass: "Phổ thông", affluent: "Khá giả", premier: "Premier", private: "Private" };
 const toDate = (s: string) => {
@@ -10,9 +11,18 @@ const toDate = (s: string) => {
 };
 const toNum = (s: string) => Number(String(s || "0").replace(/[^\d.]/g, "")) || 0;
 
+async function requireActiveRm(sb: Awaited<ReturnType<typeof getSupabase>>) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) throw new Error("Chưa đăng nhập");
+  const { data: rm } = await sb.from("rm_users").select("id, is_active").eq("id", user.id).single();
+  if (!rm || rm.is_active === false) throw new Error("Tài khoản chưa được cấp quyền RM");
+  return user;
+}
+
 async function addOne(fd: FormData) {
   "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
+  const sb = await getSupabase();
+  const user = await requireActiveRm(sb);
   await sb.from("customers").upsert({
     rm_id: user.id, full_name: String(fd.get("full_name")), phone: String(fd.get("phone") || "") || null,
     segment: String(fd.get("segment") || "mass"), aum: toNum(String(fd.get("aum"))), aum_3m_ago: toNum(String(fd.get("aum"))),
@@ -23,7 +33,8 @@ async function addOne(fd: FormData) {
 }
 async function addBulk(fd: FormData) {
   "use server";
-  const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser(); if (!user) return;
+  const sb = await getSupabase();
+  const user = await requireActiveRm(sb);
   const rows = String(fd.get("bulk") || "").split(/\r?\n/).map((l) => l.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((x) => x.replace(/^"|"$/g, "").trim()))
     .filter((r) => r[0] && !/^(tên|ten|name|họ)/i.test(r[0]));
   const payload = rows.map((r) => ({
@@ -38,7 +49,7 @@ async function addBulk(fd: FormData) {
 async function Content({ searchParams }: { searchParams: Promise<{ stage?: string; q?: string }> }) {
   const { stage = "all", q = "" } = await searchParams;
   const sb = await getSupabase(); const { data: { user } } = await sb.auth.getUser();
-  if (!user) return <main className="p-8 text-center">Vui lòng đăng nhập.</main>;
+  if (!user) redirect("/auth/login");
 
   let qry = sb.from("customers").select("*").order("created_at", { ascending: false }).limit(300);
   if (stage !== "all") qry = qry.eq("stage", stage);
@@ -115,5 +126,5 @@ async function Content({ searchParams }: { searchParams: Promise<{ stage?: strin
   );
 }
 export default function Page(props: { searchParams: Promise<{ stage?: string; q?: string }> }) {
-  return <Suspense fallback={<main className="p-8 text-gray-500">Đang tải…</main>}><Content searchParams={props.searchParams} /></Suspense>;
+  return <Suspense fallback={<main className="p-8 text-center text-gray-500">Đang tải…</main>}><Content searchParams={props.searchParams} /></Suspense>;
 }
