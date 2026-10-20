@@ -9,3 +9,4 @@
 | 2026-10-20 | Net | Sửa lỗi theme: ép giao diện sáng để chữ không mất khi máy bật dark mode | `fix/force-light-theme` | Đã merge (PR #10) |
 | 2026-10-20 | Net (subagent) | D6: tách logic thuần `toDate`, `toNum`, `parseBulkRows` ra `lib/parse.ts` + Vitest; sửa bug `toNum` với số tiền có dấu chấm phân cách nghìn (P2) | `feat/d6-pure-logic-tests` | Đã merge (PR #11) |
 | 2026-10-20 | Net | Hàm `fn_web_lead` nhận lead từ form vay.kimminso.com, rate limit 5 lead mỗi phút | `feat/web-lead-rpc` | Chờ merge |
+| 2026-10-20 | Net (subagent) | Khu vực sản phẩm: trang `/products` 7 nhóm, số lead/khách quan tâm, lọc khách theo sản phẩm + cột sản phẩm | `feat/crm-product-areas` | Chờ merge |
