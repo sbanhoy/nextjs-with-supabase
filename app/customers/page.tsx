@@ -3,13 +3,8 @@ import { Suspense } from "react";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
+import { parseBulkRows, toDate, toNum } from "@/lib/parse";
 const SEG: Record<string, string> = { mass: "Phổ thông", affluent: "Khá giả", premier: "Premier", private: "Private" };
-const toDate = (s: string) => {
-  const t = (s || "").trim(); if (!t) return null;
-  const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
-  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : t;
-};
-const toNum = (s: string) => Number(String(s || "0").replace(/[^\d.]/g, "")) || 0;
 
 async function requireActiveRm(sb: Awaited<ReturnType<typeof getSupabase>>) {
   const { data: { user } } = await sb.auth.getUser();
@@ -35,8 +30,7 @@ async function addBulk(fd: FormData) {
   "use server";
   const sb = await getSupabase();
   const user = await requireActiveRm(sb);
-  const rows = String(fd.get("bulk") || "").split(/\r?\n/).map((l) => l.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((x) => x.replace(/^"|"$/g, "").trim()))
-    .filter((r) => r[0] && !/^(tên|ten|name|họ)/i.test(r[0]));
+  const rows = parseBulkRows(String(fd.get("bulk") || ""));
   const payload = rows.map((r) => ({
     rm_id: user.id, full_name: r[0], phone: r[1] || null,
     segment: ["mass", "affluent", "premier", "private"].includes((r[2] || "").toLowerCase()) ? r[2].toLowerCase() : "mass",
