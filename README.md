@@ -1,109 +1,77 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# CRM Shinhan RM
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+CRM nội bộ cho một Relationship Manager (RM) tại Shinhan Bank Việt Nam. RM mở app mỗi ngày để biết nên liên hệ ai, vì sao và nên nói gì.
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+## Dự án là gì
 
-## Features
+RM phụ trách danh mục khách cá nhân thuộc nhiều phân khúc (mass, affluent, premier, private), với KPI giữ khách, bán chéo và kiếm khách mới. Khách và lead từ đội cộng tác viên được gom về một chỗ, chấm điểm theo bộ trọng số, rồi sinh insight có lý do giải thích. RM phản hồi Nhận, Chốt hoặc Bỏ qua kèm lý do. Chuỗi phản hồi này nuôi việc AI đề xuất bộ trọng số mới.
 
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Proxy
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Password-based authentication block installed via the [Supabase UI Library](https://supabase.com/ui/docs/nextjs/password-based-auth)
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
+AI đề xuất, con người quyết định. AI không tự đổi trọng số, không nhận PII của khách và không tự động hoá Zalo cá nhân.
 
-## Demo
+Đây không phải CRM đa người dùng, không có báo cáo cho quản lý và không tích hợp core banking.
 
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
+## Stack và hạ tầng
 
-## Deploy to Vercel
+| Thành phần | Đang dùng |
+|---|---|
+| Web | Next.js 16 App Router, `cacheComponents: true`, React 19, Tailwind CSS |
+| Dữ liệu | Supabase Postgres (Singapore) và Supabase Auth |
+| Triển khai | Vercel, function region `sin1`, auto-deploy từ `main` |
+| AI | OpenAI `gpt-4o-mini`, chỉ soạn lời; rule/SQL quyết định insight, sản phẩm và điểm ưu tiên |
+| Đồng bộ | Google Sheets + Apps Script, đồng bộ hai chiều bảng `customers` |
 
-Vercel deployment will guide you through creating a Supabase account and project.
+## Chạy local
 
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
+Cần `pnpm`.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
+```bash
+pnpm install
+pnpm dev
+```
 
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
+Mở http://localhost:3000. Trang chủ tự chuyển về `/insights`.
 
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
+Tạo `.env.local` ở thư mục gốc, điền giá trị của project Supabase đang dùng:
 
-## Clone and run locally
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+OPENAI_API_KEY=
+```
 
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: dùng publishable key hoặc anon key. Phía server cũng đọc `NEXT_PUBLIC_SUPABASE_ANON_KEY` và `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY`; phía trình duyệt chỉ đọc biến `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- `OPENAI_API_KEY`: cần cho trang Soạn tin. Thiếu biến này, nút soạn nháp bị khoá và app hiện cảnh báo.
+- Không đặt service role key trong `.env.local`, Vercel hay repo. Key này chỉ dùng trong Apps Script.
 
-2. Create a Next.js app using the Supabase Starter template npx command
+Không dán giá trị thật vào README, PR hay commit.
 
-   ```bash
-   npx create-next-app --example with-supabase with-supabase-app
-   ```
+## Bản đồ thư mục
 
-   ```bash
-   yarn create next-app --example with-supabase with-supabase-app
-   ```
+```text
+app/insights/       Màn hình chính: insight theo điểm, Nhận/Chốt/Bỏ qua kèm lý do
+app/customers/      Danh sách khách và lead, thêm một hoặc dán nhiều
+app/message/        Soạn tin bằng AI cho Zalo và Email, không gửi tên và số điện thoại lên AI
+app/admin/weights/  Quản lý phiên bản trọng số, kích hoạt, sinh insight, AI đề xuất
+app/actions.ts      Server actions ghi tương tác và xoá khách
+lib/supabase/       Kết nối Supabase cho server, client và proxy
+components/         Điều hướng, nút liên hệ, thành phần giao diện dùng chung
+```
 
-   ```bash
-   pnpm create next-app --example with-supabase with-supabase-app
-   ```
+## Quy ước làm việc
 
-3. Use `cd` to change into the app's directory
+- Đọc hết [AGENTS.md](AGENTS.md) trước khi sửa bất kỳ file nào. Đây là nguồn sự thật về kiến trúc, nguyên tắc và quy trình.
+- Không push thẳng `main`.
+- Mỗi task một nhánh riêng và một PR về `main`. Chủ dự án là người merge sau khi thử Preview.
+- Đối chiếu 10 nguyên tắc bất biến ở mục 2 của AGENTS.md trước khi mở PR. Tóm lại: AI chỉ đề xuất, người kích hoạt; không gửi PII cho LLM; không tự động hoá Zalo cá nhân; không xoá dữ liệu khách hàng loạt.
 
-   ```bash
-   cd with-supabase-app
-   ```
+## Deploy
 
-4. Rename `.env.example` to `.env.local` and update the following:
+- Vercel auto-deploy từ `main`. Mỗi PR có Preview URL để chủ dự án bấm thử.
+- Function region `sin1`; Supabase đặt tại Singapore.
+- Biến môi trường đặt trong Vercel Project Settings, không commit.
+- Quay lui: Vercel, Deployments, chọn bản trước, Promote to Production.
 
-  ```env
-  NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[INSERT SUPABASE PROJECT API PUBLISHABLE OR ANON KEY]
-  ```
-  > [!NOTE]
-  > This example uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, which refers to Supabase's new **publishable** key format.
-  > Both legacy **anon** keys and new **publishable** keys can be used with this variable name during the transition period. Supabase's dashboard may show `NEXT_PUBLIC_SUPABASE_ANON_KEY`; its value can be used in this example.
-  > See the [full announcement](https://github.com/orgs/supabase/discussions/29260) for more information.
+## Tài liệu
 
-  Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` can be found in [your Supabase project's API settings](https://supabase.com/dashboard/project/_?showConnect=true)
-
-5. You can now run the Next.js local development server:
-
-   ```bash
-   npm run dev
-   ```
-
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
-
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
-
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
-
-## Feedback and issues
-
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
-
-## More Supabase examples
-
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+- [AGENTS.md](AGENTS.md): bối cảnh, 10 nguyên tắc, kiến trúc, schema, quy ước kỹ thuật và quy trình.
+- [docs/WORKLOG.md](docs/WORKLOG.md): nhật ký task của các agent.
