@@ -23,15 +23,18 @@ export function toDate(s: string): string | null {
 /**
  * Đổi chuỗi số tiền sang Number.
  * - trim, rỗng → 0
- * - chuỗi đúng dạng nhóm nghìn kiểu VN (vd "500.000.000", "1.234.567") → bỏ dấu chấm
- * - còn lại: bỏ mọi ký tự không phải số hoặc dấu chấm rồi Number (vd "12.5" → 12.5)
+ * - bỏ mọi ký tự không phải số hoặc dấu chấm (đ, %, khoảng trắng, dấu phẩy)
+ * - chuỗi còn lại đúng dạng nhóm nghìn kiểu VN (vd "500.000.000") → bỏ dấu chấm
+ * - còn lại: Number trực tiếp (vd "12.5" → 12.5)
  * - không đọc được → 0
  */
 export function toNum(s: string): number {
   const t = String(s ?? "").trim();
   if (!t) return 0;
-  if (/^\d{1,3}(\.\d{3})+$/.test(t)) return Number(t.replace(/\./g, ""));
-  return Number(t.replace(/[^\d.]/g, "")) || 0;
+  const cleaned = t.replace(/[^\d.]/g, "");
+  if (!cleaned) return 0;
+  if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) return Number(cleaned.replace(/\./g, ""));
+  return Number(cleaned) || 0;
 }
 
 /**

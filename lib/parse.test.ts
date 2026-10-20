@@ -28,6 +28,11 @@ describe("toNum", () => {
     expect(toNum(" 500.000.000 ")).toBe(500000000);
   });
 
+  it("bỏ hậu tố đơn vị và dấu phân cách khác", () => {
+    expect(toNum("500.000.000 đ")).toBe(500000000);
+    expect(toNum("500,000,000")).toBe(500000000);
+  });
+
   it("đọc số nguyên không có dấu chấm", () => {
     expect(toNum("1234")).toBe(1234);
   });
