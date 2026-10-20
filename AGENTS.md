@@ -101,14 +101,18 @@ app/layout.tsx                 ← chỉ sửa metadata.title = "CRM Shinhan"
 app/actions.ts                 ← "use server": logInteraction, deleteCustomer
 app/insights/page.tsx          ← màn RM chính: insight theo điểm, Nhận/Chốt/Bỏ qua+lý do, "Vì sao?", link Soạn tin
 app/insights/layout.tsx        ← <CrmNav/>
-app/customers/page.tsx         ← thêm 1, dán nhiều, bảng KH/lead, ContactButtons
+app/customers/page.tsx         ← thêm 1, dán nhiều, bảng KH/lead, cột sản phẩm quan tâm, lọc theo sản phẩm, ContactButtons
 app/customers/layout.tsx
+app/products/page.tsx          ← 7 nhóm sản phẩm, số lead/khách đang quan tâm, link sang /customers?product=
+app/products/layout.tsx
 app/admin/weights/page.tsx     ← tạo/kích hoạt weight version, sinh insight, AI đề xuất, KPI theo loại, lý do bỏ qua
 app/admin/layout.tsx
 app/message/page.tsx           ← AI soạn tin (Zalo/SMS/Email × thân mật/trang trọng), nút mở kênh, "Đã gửi"
 components/CrmNav.tsx          ← next/link
 components/CopyButton.tsx      ← "use client"
 components/ContactButtons.tsx  ← "use client": 📞 💬 🤝 →KH 🗑 + gọi server actions
+lib/product-groups.ts          ← nhãn + thứ tự 7 nhóm sản phẩm dùng chung
+lib/related.ts                 ← đọc quan hệ many-to-one của supabase-js (object hoặc mảng)
 Mẫu truy cập Supabase trong server component: hàm `getSupabase()` inline với `@supabase/ssr` + `cookies()`. Được phép refactor thành `lib/supabase/server.ts` **một lần**, nhưng phải giữ fallback 3 tên env key.
 
 ### 3.4 Đối tượng Database (schema `public`)
