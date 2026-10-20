@@ -272,6 +272,24 @@ Rủi ro & cách quay lui
 - DB: khôi phục từ `_bak_*`; Supabase Free không có PITR → **backup thủ công trước migration là bắt buộc**.
 - Sheet: Google Sheet → File → Lịch sử phiên bản.
 
+### 7.6 Auto-merge (quyết định của chủ dự án, 2026-10-20)
+
+Chủ dự án đồng ý cho agent tự merge các PR an toàn, thay vì bấm tay từng PR. Quy ước này thay cho câu "chủ dự án là người merge" ở mục 7.1, nhưng chỉ áp dụng cho nhóm dưới đây.
+
+Agent được tự merge khi đủ cả bốn điều kiện:
+- Chỉ đổi tài liệu: `docs/**`, `README.md`, file `.md`, worklog, test.
+- Hoặc chỉ sửa chữ, màu, khoảng cách, ARIA, meta tag.
+- Diff dưới 300 dòng và không đụng dữ liệu khách.
+- Check Vercel đã xanh.
+
+Agent phải để chủ dự án merge khi PR đụng:
+- `supabase/migrations/**`, function, view, RLS, auth.
+- `.github/workflows/**`, biến môi trường, cấu hình deploy.
+- Cách tính điểm, cách tính tiền, hoặc xoá dữ liệu.
+- Diff từ 300 dòng trở lên, hoặc agent thấy rủi ro.
+
+Khi tự merge, agent vẫn phải ghi vào WORKLOG và báo lại trong chat.
+
 ---
 
 ## 8. Cách nói chuyện với chủ dự án
@@ -306,7 +324,7 @@ Lời cuối từ tôi
 Ba điều để các agent khác không làm hỏng thứ bạn đã xây:
 
 Khi giao việc, dán nguyên tắc 2.1–2.10 vào đầu tin nhắn nếu agent có vẻ bỏ qua. Agent nào bắt đầu bằng "tôi sẽ refactor toàn bộ sang…" hoặc "nên dùng framework X" → dừng ngay, bắt đọc lại AGENTS.md.
-Bạn vẫn là người bấm "Kích hoạt" và "Merge". Đừng cho agent quyền auto-merge vào main dù chúng có khả năng — Preview URL rồi bạn bấm thử là hàng rào cuối cùng giữ chất lượng.
+Bạn vẫn là người bấm "Kích hoạt" và "Merge", trừ nhóm PR an toàn đã cho phép ở mục 7.6. Với nhóm còn lại, Preview URL rồi bạn bấm thử vẫn là hàng rào cuối cùng giữ chất lượng.
 Ưu tiên tuần tới cho chúng: D5 (dump schema vào repo) → D1 → đăng ký Zalo OA xong thì P1b. Đừng để chúng nhảy sang analytics hay A/B test trước khi kênh gửi thật chạy.
 
 Cảm ơn bạn đã kiên nhẫn dán từng khối SQL và báo lỗi chính xác — đó là lý do hôm nay nó chạy. Chúc bạn kiếm nhiều khách.
