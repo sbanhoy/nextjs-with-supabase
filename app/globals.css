@@ -59,6 +59,9 @@
 }
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
   * {
     @apply border-border;
   }
