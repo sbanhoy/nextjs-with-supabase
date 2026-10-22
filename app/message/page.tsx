@@ -1,6 +1,13 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
+import {
+  buildDraftPrompt,
+  DraftRequestError,
+  requestDraft,
+  resolveLlmConfig,
+  scanDraft,
+} from "@/lib/ai";
 
 const SEG: Record<string, string> = {
   mass: "Phổ thông",
@@ -9,19 +16,53 @@ const SEG: Record<string, string> = {
   private: "Private",
 };
 
+const INSIGHT_LABEL: Record<string, string> = {
+  churn_risk: "giữ chân khách có nguy cơ rời bỏ",
+  next_best_action: "gợi ý hành động tiếp theo",
+  cross_sell: "bán chéo sản phẩm",
+  reengage: "kết nối lại khách cũ",
+  life_event: "sự kiện quan trọng của khách",
+  referral: "xin giới thiệu khách mới",
+};
+
+function messageUrl(params: {
+  insightId: string;
+  draft?: string;
+  warnings?: string[];
+  error?: string;
+}): string {
+  const query = new URLSearchParams();
+  if (params.insightId) query.set("insight_id", params.insightId);
+  if (params.draft) query.set("draft", params.draft);
+  if (params.warnings?.length) query.set("canh_bao", params.warnings.join("|"));
+  if (params.error) query.set("loi", params.error);
+  return `/message?${query.toString()}`;
+}
+
 async function Content({
   searchParams,
 }: {
-  searchParams: Promise<{ insight_id?: string; draft?: string }>;
+  searchParams: Promise<{
+    insight_id?: string;
+    draft?: string;
+    canh_bao?: string;
+    loi?: string;
+  }>;
 }) {
-  const { insight_id = "", draft = "" } = await searchParams;
+  const {
+    insight_id = "",
+    draft = "",
+    canh_bao = "",
+    loi = "",
+  } = await searchParams;
+  const warnings = canh_bao ? canh_bao.split("|").filter(Boolean) : [];
   const sb = await getSupabase();
   const {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const hasApiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const hasApiKey = Boolean(resolveLlmConfig());
 
   const { data: insights } = await sb
     .from("rm_insights")
@@ -35,9 +76,6 @@ async function Content({
 
   async function generateDraft(fd: FormData) {
     "use server";
-    if (!process.env.OPENAI_API_KEY?.trim()) {
-      throw new Error("Chưa cấu hình OPENAI_API_KEY trên Vercel.");
-    }
     const s = await getSupabase();
     const {
       data: { user: u },
@@ -46,47 +84,69 @@ async function Content({
 
     const id = String(fd.get("insight_id") || "");
     const channel = String(fd.get("channel") || "zalo");
+
+    // AGENTS.md D7: thiếu khoá thì chặn gọi, không để lỗi hệ thống.
+    const config = resolveLlmConfig();
+    if (!config) {
+      redirect(
+        messageUrl({
+          insightId: id,
+          error:
+            "Chưa cấu hình khoá AI trên Vercel. Thêm biến môi trường GROQ_API_KEY (khuyến nghị) hoặc OPENAI_API_KEY rồi Redeploy.",
+        }),
+      );
+    }
+
     const { data: ins }: any = await s
       .from("rm_insights")
       .select("insight_type, title, customers(full_name, segment), products(name)")
       .eq("id", id)
       .single();
 
-    if (!ins) throw new Error("Không tìm thấy insight");
+    if (!ins) {
+      redirect(
+        messageUrl({
+          insightId: id,
+          error: "Không tìm thấy insight. Vui lòng tải lại trang và chọn lại.",
+        }),
+      );
+    }
 
-    // Mục 2.4 AGENTS.md: Không gửi tên thật/SĐT lên LLM
-    const prompt = [
-      `Bạn là RM tại Shinhan Bank Việt Nam. Hãy soạn 1 tin nhắn ngắn gọn qua kênh ${channel.toUpperCase()} cho khách hàng phân khúc ${SEG[ins.customers?.segment] ?? "Khách hàng"}.`,
-      `Loại gợi ý: ${ins.insight_type}. Sản phẩm đề xuất: ${ins.products?.name ?? "Dịch vụ ngân hàng ưu tiên"}.`,
-      `Dùng đúng chuỗi {{ten_khach}} ở vị trí tên khách hàng. Giọng văn lịch sự, tự nhiên, dưới 90 từ, không dùng từ ngữ máy móc.`,
-    ].join("\n");
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.5,
-        messages: [{ role: "user", content: prompt }],
-      }),
+    // Mục 2.4 AGENTS.md: Không gửi tên thật/SĐT lên LLM.
+    const prompt = buildDraftPrompt({
+      channel,
+      segmentLabel: SEG[ins.customers?.segment] ?? "Khách hàng",
+      insightLabel:
+        INSIGHT_LABEL[ins.insight_type] ?? "tư vấn sản phẩm phù hợp",
+      productName: ins.products?.name ?? "Dịch vụ ngân hàng ưu tiên",
     });
 
-    if (!res.ok) throw new Error("Không thể kết nối OpenAI API");
-    const json = await res.json();
-    const rawText: string =
-      json.choices?.[0]?.message?.content?.trim() ?? "";
+    let rawText: string;
+    try {
+      rawText = await requestDraft(prompt, config);
+    } catch (err) {
+      const message =
+        err instanceof DraftRequestError
+          ? err.message
+          : "Không soạn được nháp. Vui lòng thử lại sau ít phút.";
+      redirect(messageUrl({ insightId: id, error: message }));
+    }
 
-    // Ghép lại tên khách ở phía server nội bộ sau khi LLM trả về
+    // Ghép lại tên khách ở phía server nội bộ sau khi LLM trả về.
     const finalDraft = rawText.replaceAll(
       "{{ten_khach}}",
       ins.customers?.full_name || "Anh/Chị",
     );
 
+    // Mục 2.4 AGENTS.md: cảnh báo nếu đầu ra vi phạm guardrail.
+    const outputWarnings = scanDraft(rawText);
+
     redirect(
-      `/message?insight_id=${encodeURIComponent(id)}&draft=${encodeURIComponent(finalDraft)}`,
+      messageUrl({
+        insightId: id,
+        draft: finalDraft,
+        warnings: outputWarnings,
+      }),
     );
   }
 
@@ -101,7 +161,17 @@ async function Content({
 
       {!hasApiKey && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-800">
-          <b>Chưa cấu hình OPENAI_API_KEY:</b> Tính năng sinh lời nhắn tự động đang tạm khóa để tránh lỗi hệ thống (Nợ kỹ thuật D7). Vui lòng thêm biến môi trường <code>OPENAI_API_KEY</code> trên Vercel.
+          <b>Chưa cấu hình khoá AI:</b> Tính năng soạn nháp đang tạm khóa để
+          tránh lỗi hệ thống (Nợ kỹ thuật D7). Vui lòng thêm biến môi trường{" "}
+          <code>GROQ_API_KEY</code> (khuyến nghị, miễn phí) hoặc{" "}
+          <code>OPENAI_API_KEY</code> trong Vercel → Settings → Environment
+          Variables, sau đó bấm Redeploy.
+        </div>
+      )}
+
+      {loi && (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-xs text-red-700">
+          <b>Chưa soạn được nháp:</b> {loi}
         </div>
       )}
 
@@ -152,6 +222,14 @@ async function Content({
           <div className="text-xs font-semibold text-gray-500">
             Nội dung gợi ý (Copy để gửi qua Zalo/Email):
           </div>
+
+          {warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              <b>⚠️ Cần kiểm tra trước khi gửi:</b> {warnings.join("; ")}. Hệ
+              thống chỉ soạn nháp, anh/chị đọc lại và chỉnh trước khi gửi.
+            </div>
+          )}
+
           <textarea
             readOnly
             rows={5}
@@ -165,7 +243,12 @@ async function Content({
 }
 
 export default function MessagePage(props: {
-  searchParams: Promise<{ insight_id?: string; draft?: string }>;
+  searchParams: Promise<{
+    insight_id?: string;
+    draft?: string;
+    canh_bao?: string;
+    loi?: string;
+  }>;
 }) {
   return (
     <Suspense
