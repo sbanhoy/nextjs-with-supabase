@@ -10,7 +10,7 @@
 ## 0. TL;DR cho agent vội
 
 - Đây là CRM **1 người dùng**: anh Kim Minso, Relationship Manager tại Shinhan Bank VN. **Không phải dev.**
-- Stack: Next.js 16 (App Router, `cacheComponents` bật) + Supabase (Postgres, Singapore) + Vercel (sin1) + Google Sheets (Apps Script) + OpenAI gpt-4o-mini.
+- Stack: Next.js 16 (App Router, `cacheComponents` bật) + Supabase (Postgres, Singapore) + Vercel (sin1) + Google Sheets (Apps Script) + Groq `openai/gpt-oss-120b` (dự phòng OpenAI `gpt-4o-mini`).
 - Linh hồn sản phẩm: **AI chấm điểm & gợi ý, CON NGƯỜI quyết định.** Mọi thứ phải giải thích được, không có hộp đen.
 - Chủ dự án chỉ kiểm tra bằng cách **bấm chuột trên web/điện thoại**. Mỗi thay đổi phải kèm "checkpoint" để anh ấy tự xác nhận.
 - Không bao giờ: đụng Zalo cá nhân, gửi PII cho LLM, để AI tự đổi trọng số, xoá dữ liệu khách, thêm framework mới.
@@ -88,10 +88,10 @@ Không `truncate`, không `drop table`, không `delete from customers` hàng lo�
 | Google Sheet | Tab `CRM`, Apps Script: trigger 5 phút (Sheet→CRM) + Web App `doPost` (CRM→Sheet) |
 | Supabase Webhook | `sheet-sync`: table `customers`, INSERT/UPDATE/DELETE → Apps Script `/exec` |
 | pg_cron | `daily-insights` 01:00 UTC (08:00 VN), `weekly-tune` Thứ Hai 02:00 UTC |
-| OpenAI | `gpt-4o-mini`, key trong Vercel env `OPENAI_API_KEY` |
+| LLM | Groq `openai/gpt-oss-120b` (ưu tiên, key Vercel env `GROQ_API_KEY`); dự phòng OpenAI `gpt-4o-mini` (`OPENAI_API_KEY`) |
 
 ### 3.2 Biến môi trường (Vercel)
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (hoặc `…PUBLISHABLE_OR_ANON_KEY` tuỳ template), `OPENAI_API_KEY`.
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (hoặc `…PUBLISHABLE_OR_ANON_KEY` tuỳ template), `GROQ_API_KEY` (khuyến nghị), `OPENAI_API_KEY` (dự phòng), `GROQ_MODEL` (tuỳ chọn).
 Service-role key **chỉ** nằm trong Apps Script (hằng `SERVICE_KEY`). Không đưa vào Vercel, không log, không commit.
 
 ### 3.3 Cây file do dự án tạo (ngoài template)
@@ -113,6 +113,8 @@ components/CopyButton.tsx      ← "use client"
 components/ContactButtons.tsx  ← "use client": 📞 💬 🤝 →KH 🗑 + gọi server actions
 lib/product-groups.ts          ← nhãn + thứ tự 7 nhóm sản phẩm dùng chung
 lib/related.ts                 ← đọc quan hệ many-to-one của supabase-js (object hoặc mảng)
+lib/ai.ts                      ← chọn LLM (Groq/OpenAI), prompt 4 cấm, gọi API, guardrail đầu ra
+lib/ai.test.ts                 ← Vitest cho lib/ai.ts (chọn provider, prompt, guardrail)
 Mẫu truy cập Supabase trong server component: hàm `getSupabase()` inline với `@supabase/ssr` + `cookies()`. Được phép refactor thành `lib/supabase/server.ts` **một lần**, nhưng phải giữ fallback 3 tên env key.
 
 ### 3.4 Đối tượng Database (schema `public`)
@@ -172,8 +174,10 @@ Mẫu truy cập Supabase trong server component: hàm `getSupabase()` inline v�
 - Không bỏ `LockService`.
 
 ### 4.5 LLM
-- Model mặc định `gpt-4o-mini`. Nâng model phải nêu chi phí.
-- Prompt hệ thống phải chứa đủ 4 cấm: lãi suất/số liệu, cam kết, nhắc AI/hệ thống, PII. Giữ regex guardrail đầu ra khi gửi tự động (nếu có).
+- Nhà cung cấp mặc định: Groq `openai/gpt-oss-120b` (Vercel env `GROQ_API_KEY`). Không có khoá Groq thì dùng OpenAI `gpt-4o-mini` (`OPENAI_API_KEY`). Đổi model Groq bằng `GROQ_MODEL`, không cần sửa code.
+- Mọi lời gọi LLM đi qua `lib/ai.ts`. Không đọc khoá API ở file khác, không log khoá.
+- Prompt hệ thống phải chứa đủ 4 cấm: lãi suất/số liệu, cam kết, nhắc AI/hệ thống, PII; cộng thêm cấm bịa hotline/ưu đãi. Prompt chỉ gửi phân khúc, mục đích, tên sản phẩm.
+- Guardrail đầu ra: `scanDraft()` gắn cảnh báo cho RM khi phát hiện `%`, hotline/email/số tài khoản, từ cam kết, AI/hệ thống. Tính năng chỉ tạo nháp, RM là người gửi.
 - Lưu draft vào `rm_insights.draft_message` để không gọi lại tốn tiền.
 
 ---
@@ -188,7 +192,7 @@ Mẫu truy cập Supabase trong server component: hàm `getSupabase()` inline v�
 | D4 | `v_customer_scores` gọi `fn_score_customer` per-row; ổn tới ~2.000 KH, sau đó viết lại dạng set-based | P3 |
 | D5 | Chưa có `supabase/migrations/` trong repo — agent đầu tiên vào phải **dump schema hiện tại** (`supabase db pull`) thành `000_baseline.sql` để có nguồn sự thật | **P0** |
 | D6 | Chưa có test. Thêm Vitest tối thiểu cho logic thuần (parse bulk, toDate, toNum) | P2 |
-| D7 | `app/message/page.tsx`: nếu thiếu `OPENAI_API_KEY` chỉ hiện cảnh báo, chưa chặn gọi | P1 |
+| D7 | ✅ Đã xử lý 2026-10-22: `app/message/page.tsx` khoá nút và chặn gọi khi thiếu khoá LLM; báo lỗi tiếng Việt. Hỗ trợ `GROQ_API_KEY`. | — |
 
 ---
 
