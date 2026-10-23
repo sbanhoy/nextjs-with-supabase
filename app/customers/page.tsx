@@ -163,7 +163,7 @@ async function Content({ searchParams }: { searchParams: Promise<{ stage?: strin
           <thead><tr className="text-left text-xs text-gray-500 bg-gray-50"><th className="p-2">Tên</th><th>SĐT</th><th>Loại</th><th>Phân khúc</th><th className="text-right">Tài sản</th><th>Nguồn</th><th>Sản phẩm</th><th>Liên hệ cuối</th><th className="text-right">Điểm</th><th>Ghi tương tác</th></tr></thead>
           <tbody>{cs?.map((c) => (
             <tr key={c.id} className="border-t">
-              <td className="p-2 font-medium">{c.full_name}{c.note && <div className="text-xs text-gray-400">{c.note}</div>}</td>
+              <td className="p-2 font-medium"><Link href={`/customers/${c.id}`} className="hover:text-[#0046ff] hover:underline">{c.full_name}</Link>{c.note && <div className="text-xs text-gray-400">{c.note}</div>}</td>
               <td>{c.phone}</td>
               <td>{c.stage === "lead" ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Lead</span> : <span className="text-xs text-gray-500">KH</span>}</td>
               <td>{SEG[c.segment]}</td>
