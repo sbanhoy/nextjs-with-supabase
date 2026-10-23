@@ -107,7 +107,8 @@ app/products/page.tsx          ← 7 nhóm sản phẩm, số lead/khách đang 
 app/products/layout.tsx
 app/admin/weights/page.tsx     ← tạo/kích hoạt weight version, sinh insight, AI đề xuất, KPI theo loại, lý do bỏ qua
 app/admin/layout.tsx
-app/message/page.tsx           ← AI soạn tin: chọn insight bằng thẻ card, chọn kênh Zalo/Email, tạo nháp kèm cảnh báo an toàn
+app/customers/[id]/page.tsx      ← hồ sơ khách: thông tin, sản phẩm đang dùng, insight (có nút Soạn tin), lịch sử tương tác
+app/message/page.tsx           ← AI soạn tin: 1 thẻ/khách, mỗi gợi ý là 1 chip, chọn kênh Zalo/Email, tạo nháp kèm cảnh báo an toàn
 components/CrmNav.tsx          ← next/link
 components/CopyButton.tsx      ← "use client"
 components/ContactButtons.tsx  ← "use client": 📞 💬 🤝 →KH 🗑 + gọi server actions

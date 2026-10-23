@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
@@ -43,7 +44,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
 
   const { data: insights, error } = await sb
     .from("rm_insights")
-    .select("*, customers(full_name, segment, phone), products(name)")
+    .select("*, customers(id, full_name, segment, phone), products(name)")
     .eq("status", status)
     .order("priority_score", { ascending: false })
     .limit(100);
@@ -89,7 +90,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
               <span className="text-sm font-semibold text-[#0046ff]">{Number(i.priority_score).toFixed(0)} điểm</span>
             </div>
             <div className="font-medium">
-              {i.customers?.full_name}
+              <Link href={`/customers/${i.customers?.id}`} className="hover:text-[#0046ff] hover:underline">{i.customers?.full_name}</Link>
               <span className="text-xs text-gray-500 ml-2">{SEG[i.customers?.segment] ?? i.customers?.segment} · {i.customers?.phone}</span>
             </div>
             <div className="text-sm">{i.title}</div>
@@ -118,6 +119,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
                   <option>Không đúng thời điểm</option>
                 </select>
                 <button name="action" value="dismissed" className="px-3 py-1.5 text-xs rounded-lg border">Bỏ qua</button>
+                <Link href={`/message?insight_id=${i.id}`} className="px-3 py-1.5 text-xs rounded-lg border border-[#0046ff]/40 text-[#0046ff]">✍️ Soạn tin</Link>
               </form>
             ) : (
               <div className="text-xs text-gray-400">Cập nhật: {new Date(i.updated_at).toLocaleString("vi-VN")}</div>
