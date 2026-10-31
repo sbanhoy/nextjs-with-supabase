@@ -100,7 +100,7 @@ async function Content() {
       <section className="grid md:grid-cols-2 gap-6">
         <form action={saveVersion} className="rounded-xl border bg-white p-4 space-y-3">
           <h2 className="font-semibold">Tạo phiên bản trọng số mới</h2>
-          <p className="text-xs text-gray-500">Nhập % cho từng yếu tố (tự chuẩn hoá về 100%). Lưu xong bấm "Kích hoạt" ở cột phải.</p>
+          <p className="text-xs text-gray-500">Nhập % cho từng yếu tố (tự chuẩn hoá về 100%). Lưu xong bấm &ldquo;Kích hoạt&rdquo; ở cột phải.</p>
           <input name="name" required placeholder="Tên phiên bản, vd: Ưu tiên giữ khách Q3" className="w-full border rounded-lg px-3 py-2 text-sm" />
           {KEYS.map((k) => (
             <label key={k} className="flex items-center gap-3 text-sm">
