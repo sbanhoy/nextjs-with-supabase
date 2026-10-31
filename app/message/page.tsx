@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
+import { firstRelated } from "@/lib/related";
 import {
   buildDraftPrompt,
   DraftRequestError,
@@ -57,6 +58,14 @@ type MessageSearchParams = {
   kenh?: string;
 };
 
+type CustomerGroup = {
+  id: string;
+  name: string;
+  segment?: string;
+  topScore: number;
+  insights: any[];
+};
+
 function messageUrl(params: {
   insightId?: string;
   channel?: string;
@@ -72,6 +81,36 @@ function messageUrl(params: {
   if (params.error) query.set("loi", params.error);
   const queryString = query.toString();
   return queryString ? `/message?${queryString}` : "/message";
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  return day && month && year ? `${day}/${month}/${year}` : value;
+}
+
+type MaturingProduct = { productName?: string; date?: string | null };
+
+async function getMaturingProduct(
+  sb: any,
+  customerId: string,
+  today: string,
+): Promise<MaturingProduct | null> {
+  if (!customerId) return null;
+  const { data } = await sb
+    .from("product_holdings")
+    .select("maturity_date, products(name)")
+    .eq("customer_id", customerId)
+    .eq("status", "active")
+    .gte("maturity_date", today)
+    .order("maturity_date", { ascending: true })
+    .limit(1);
+  const row: any = data?.[0];
+  if (!row) return null;
+  return {
+    productName: firstRelated(row.products)?.name,
+    date: row.maturity_date,
+  };
 }
 
 async function Content({
@@ -96,11 +135,12 @@ async function Content({
   if (!user) redirect("/auth/login");
 
   const hasApiKey = Boolean(resolveLlmConfig());
+  const today = new Date().toISOString().slice(0, 10);
 
   const { data: insights } = await sb
     .from("rm_insights")
     .select(
-      "id, insight_type, title, detail, priority_score, customers(full_name, segment), products(name)",
+      "id, insight_type, title, detail, priority_score, customers(id, full_name, segment), products(name)",
     )
     .eq("status", "open")
     .order("priority_score", { ascending: false })
@@ -110,6 +150,35 @@ async function Content({
   const selected: any = insight_id
     ? (list.find((x: any) => x.id === insight_id) ?? null)
     : null;
+  const selectedCustomerId = selected?.customers?.id ?? "";
+
+  // Gộp insight theo khách: mỗi khách 1 thẻ, bên trong là các gợi ý.
+  const groupMap = new Map<string, CustomerGroup>();
+  for (const insight of list) {
+    const customer = insight.customers ?? {};
+    const customerId = customer.id ?? "unknown";
+    const group: CustomerGroup = groupMap.get(customerId) ?? {
+      id: customerId,
+      name: customer.full_name ?? "Khách hàng",
+      segment: customer.segment,
+      topScore: 0,
+      insights: [],
+    };
+    group.insights.push(insight);
+    group.topScore = Math.max(
+      group.topScore,
+      Number(insight.priority_score ?? 0),
+    );
+    groupMap.set(customerId, group);
+  }
+  const groups = [...groupMap.values()].sort(
+    (a, b) => b.topScore - a.topScore,
+  );
+
+  const maturing =
+    selected?.insight_type === "next_best_action"
+      ? await getMaturingProduct(sb, selectedCustomerId, today)
+      : null;
 
   async function generateDraft(fd: FormData) {
     "use server";
@@ -138,7 +207,9 @@ async function Content({
 
     const { data: ins }: any = await s
       .from("rm_insights")
-      .select("insight_type, title, customers(full_name, segment), products(name)")
+      .select(
+        "insight_type, title, customer_id, customers(full_name, segment), products(name)",
+      )
       .eq("id", id)
       .single();
 
@@ -152,13 +223,26 @@ async function Content({
       );
     }
 
+    // Insight "sắp đáo hạn" phải gắn với đúng sản phẩm của khách,
+    // tránh câu "Tư vấn chung" không liên quan.
+    let productName = ins.products?.name ?? "Dịch vụ ngân hàng ưu tiên";
+    if (ins.insight_type === "next_best_action" && ins.customer_id) {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const maturingProduct = await getMaturingProduct(
+        s,
+        ins.customer_id,
+        todayIso,
+      );
+      if (maturingProduct?.productName) productName = maturingProduct.productName;
+    }
+
     // Mục 2.4 AGENTS.md: Không gửi tên thật/SĐT lên LLM.
     const prompt = buildDraftPrompt({
       channel: chosenChannel,
       segmentLabel: SEG[ins.customers?.segment] ?? "Khách hàng",
       insightLabel:
         INSIGHT_LABEL[ins.insight_type] ?? "tư vấn sản phẩm phù hợp",
-      productName: ins.products?.name ?? "Dịch vụ ngân hàng ưu tiên",
+      productName,
     });
 
     let rawText: string;
@@ -205,8 +289,8 @@ async function Content({
         </div>
         <h1 className="text-2xl font-bold">Soạn tin nhắn gợi ý (Ẩn danh PII)</h1>
         <p className="text-xs text-gray-500 mt-1">
-          Bấm vào thẻ insight để chọn khách, chọn kênh gửi rồi bấm soạn nháp.
-          Tên khách chỉ được ghép vào sau, không gửi lên AI.
+          Mỗi thẻ là một khách. Bấm vào gợi ý trong thẻ để chọn, chọn kênh rồi
+          bấm soạn nháp. Tên khách chỉ được ghép vào sau, không gửi lên AI.
         </p>
       </header>
 
@@ -228,7 +312,7 @@ async function Content({
 
       {insight_id && !selected && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-800">
-          Insight này không còn mở. Vui lòng chọn một thẻ insight bên dưới.
+          Insight này không còn mở. Vui lòng chọn một gợi ý trong thẻ bên dưới.
         </div>
       )}
 
@@ -241,7 +325,12 @@ async function Content({
             <div>
               <div className="text-xs text-gray-500">Đang soạn cho</div>
               <div className="font-semibold">
-                {selected.customers?.full_name}
+                <Link
+                  href={`/customers/${selectedCustomerId}`}
+                  className="hover:text-[#0046ff] hover:underline"
+                >
+                  {selected.customers?.full_name}
+                </Link>
                 <span className="font-normal text-gray-600">
                   {" "}
                   · {INSIGHT_SHORT[selected.insight_type] ?? selected.title}
@@ -258,6 +347,13 @@ async function Content({
               {INSIGHT_SHORT[selected.insight_type] ?? selected.insight_type}
             </span>
           </div>
+
+          {maturing?.productName && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-[#0046ff]">
+              Sản phẩm sắp đáo hạn: <b>{maturing.productName}</b>
+              {maturing.date ? <> · {formatDate(maturing.date)}</> : null}
+            </div>
+          )}
 
           <input type="hidden" name="insight_id" value={selected.id} />
 
@@ -318,14 +414,14 @@ async function Content({
       <section className="space-y-3">
         <div className="flex items-end justify-between gap-2">
           <h2 className="font-semibold">
-            {selected ? "Chọn insight khác" : "1. Chọn insight cần soạn"}
+            {selected ? "Chọn khách / gợi ý khác" : "1. Chọn khách và gợi ý"}
           </h2>
           <span className="text-xs text-gray-500">
-            {list.length} insight đang mở
+            {groups.length} khách · {list.length} insight đang mở
           </span>
         </div>
 
-        {list.length === 0 && (
+        {groups.length === 0 && (
           <div className="rounded-xl border border-dashed bg-white p-6 text-center text-sm text-gray-500">
             Chưa có insight nào đang mở. Vào{" "}
             <Link href="/insights" className="text-[#0046ff] underline">
@@ -336,65 +432,80 @@ async function Content({
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {list.map((i: any) => {
-            const isSelected = selected?.id === i.id;
+          {groups.map((group) => {
+            const isSelectedGroup = selectedCustomerId === group.id;
             return (
-              <Link
-                key={i.id}
-                href={messageUrl({ insightId: i.id, channel })}
-                aria-current={isSelected ? "true" : undefined}
-                className={`group rounded-xl border bg-white p-4 shadow-sm transition hover:border-[#0046ff] ${
-                  isSelected
+              <div
+                key={group.id}
+                className={`rounded-xl border bg-white p-4 shadow-sm transition ${
+                  isSelectedGroup
                     ? "border-[#0046ff] ring-2 ring-[#0046ff]/15"
-                    : "border-gray-200"
+                    : "border-gray-200 hover:border-[#0046ff]/50"
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full ${
-                      INSIGHT_COLOR[i.insight_type] ??
-                      "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {INSIGHT_SHORT[i.insight_type] ?? i.insight_type}
-                  </span>
-                  <span className="text-sm font-semibold text-[#0046ff]">
-                    {Number(i.priority_score ?? 0).toFixed(0)} điểm
-                  </span>
-                </div>
-
-                <div className="mt-2 font-medium">
-                  {i.customers?.full_name}
-                  <span className="text-xs text-gray-500 ml-2">
-                    {SEG[i.customers?.segment] ?? i.customers?.segment}
-                  </span>
-                </div>
-
-                <div className="mt-1 text-sm">{i.title}</div>
-                {i.detail && (
-                  <div className="mt-1 text-xs text-gray-500 line-clamp-2">
-                    {i.detail}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/customers/${group.id}`}
+                      className="font-medium hover:text-[#0046ff] hover:underline"
+                    >
+                      {group.name}
+                    </Link>
+                    <span className="text-xs text-gray-500 ml-2">
+                      {SEG[group.segment ?? ""] ?? group.segment}
+                    </span>
                   </div>
-                )}
-
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="text-xs text-gray-500">
-                    Gợi ý:{" "}
-                    <b className="text-gray-700">
-                      {i.products?.name ?? "Tư vấn chung"}
-                    </b>
-                  </div>
-                  <span
-                    className={`text-xs font-medium ${
-                      isSelected
-                        ? "text-[#0046ff]"
-                        : "text-gray-400 group-hover:text-[#0046ff]"
-                    }`}
-                  >
-                    {isSelected ? "✓ Đang chọn" : "Chọn →"}
+                  <span className="text-sm font-semibold text-[#0046ff] whitespace-nowrap">
+                    {group.topScore.toFixed(0)} điểm
                   </span>
                 </div>
-              </Link>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {group.insights.map((insight) => {
+                    const isSelectedInsight = selected?.id === insight.id;
+                    return (
+                      <Link
+                        key={insight.id}
+                        href={messageUrl({
+                          insightId: insight.id,
+                          channel,
+                        })}
+                        title={insight.title}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                          isSelectedInsight
+                            ? "bg-[#0046ff] text-white border-[#0046ff]"
+                            : `${
+                                INSIGHT_COLOR[insight.insight_type] ??
+                                "bg-gray-100 text-gray-700"
+                              } border-transparent hover:border-[#0046ff]`
+                        }`}
+                      >
+                        {INSIGHT_SHORT[insight.insight_type] ??
+                          insight.insight_type}
+                        <span
+                          className={`ml-1 ${
+                            isSelectedInsight ? "text-white/80" : "opacity-70"
+                          }`}
+                        >
+                          {Number(insight.priority_score ?? 0).toFixed(0)}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-xs text-gray-400">
+                    {group.insights.length} gợi ý
+                  </span>
+                  <Link
+                    href={`/customers/${group.id}`}
+                    className="text-xs text-[#0046ff] hover:underline"
+                  >
+                    Hồ sơ khách →
+                  </Link>
+                </div>
+              </div>
             );
           })}
         </div>
