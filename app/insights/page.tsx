@@ -83,7 +83,7 @@ async function InsightsContent({ searchParams }: { searchParams: Promise<{ statu
       {!insights?.length && <div className="text-gray-500 text-sm">Không có insight nào ở mục này.</div>}
 
       <section className="grid md:grid-cols-2 gap-4">
-        {insights?.map((i: any) => (
+        {insights?.map((i) => (
           <div key={i.id} className="rounded-xl border bg-white p-4 space-y-2 shadow-sm">
             <div className="flex items-center justify-between">
               <span className={`text-xs px-2 py-0.5 rounded-full ${COLOR[i.insight_type] ?? "bg-gray-100"}`}>{LABEL[i.insight_type] ?? i.insight_type}</span>
