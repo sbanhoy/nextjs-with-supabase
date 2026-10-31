@@ -9,6 +9,7 @@ export default function CrmNav() {
         <Link href="/customers" className={L}>Khách hàng</Link>
         <Link href="/products" className={L}>Sản phẩm</Link>
         <Link href="/message" className={L}>Soạn tin</Link>
+        <Link href="/analytics" className={L}>Đo lường</Link>
         <Link href="/admin/weights" className={L}>Admin</Link>
       </div>
     </nav>

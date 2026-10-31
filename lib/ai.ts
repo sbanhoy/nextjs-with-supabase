@@ -157,7 +157,10 @@ export async function requestDraft(
     );
   }
 
-  const json: any = await res.json().catch(() => null);
+  type ChatCompletion = {
+    choices?: { message?: { content?: string | null } | null }[] | null;
+  } | null;
+  const json = (await res.json().catch(() => null)) as ChatCompletion;
   const text: string =
     json?.choices?.[0]?.message?.content?.trim?.() ?? "";
 
