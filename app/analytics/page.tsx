@@ -1,8 +1,21 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSupabase } from "@/lib/supabase/server";
-
-const DAY = 86_400_000;
+import {
+  DAY_MS as DAY,
+  acceptRate,
+  buildWeeks,
+  contactedCount,
+  decidedCount,
+  funnelCounts,
+  rate,
+  sourceTable,
+  versionTable,
+  weeklySeries,
+  type CustomerRow,
+  type InsightRow,
+  type WeightVersionRow,
+} from "@/lib/analytics";
 
 const STATUS_LABEL: Record<string, string> = {
   open: "Đang mở",
@@ -12,31 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
   expired: "Hết hạn",
 };
 
-type Insight = {
-  id: string;
-  customer_id: string | null;
-  status: string;
-  insight_type: string;
-  weight_version: number;
-  created_at: string;
-  updated_at: string;
-  priority_score: number;
-};
-
 type Interaction = { customer_id: string | null; channel: string | null; occurred_at: string };
-type Customer = { id: string; source: string | null; stage: string | null };
-type WeightVersion = { version: number; name: string | null; is_active: boolean };
-
-function rate(n: number, d: number) {
-  return d > 0 ? Math.round((n / d) * 100) : 0;
-}
-
-function weekStart(d: Date) {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dow = (x.getUTCDay() + 6) % 7; // Thứ hai = 0
-  x.setUTCDate(x.getUTCDate() - dow);
-  return x;
-}
 
 function shortDate(iso: string) {
   const d = new Date(iso);
@@ -96,10 +85,10 @@ async function AnalyticsContent() {
     sb.from("weight_matrix").select("version, name, is_active").order("version", { ascending: false }).limit(50),
   ]);
 
-  const insights = (insightRes.data ?? []) as Insight[];
+  const insights = (insightRes.data ?? []) as InsightRow[];
   const interactions = (interactionRes.data ?? []) as Interaction[];
-  const customers = (customerRes.data ?? []) as Customer[];
-  const versions = (versionRes.data ?? []) as WeightVersion[];
+  const customers = (customerRes.data ?? []) as CustomerRow[];
+  const versions = (versionRes.data ?? []) as WeightVersionRow[];
 
   const error = insightRes.error ?? interactionRes.error ?? customerRes.error ?? versionRes.error;
 
@@ -108,63 +97,23 @@ async function AnalyticsContent() {
   const contacted = new Set(interactions.map((i) => i.customer_id).filter(Boolean) as string[]);
 
   // KPI 30 ngày
-  const in30 = insights.filter((i) => i.created_at >= since30);
-  const acceptedAll = insights.filter((i) => i.status === "accepted" || i.status === "converted");
-  const decided = insights.filter((i) => ["accepted", "converted", "dismissed"].includes(i.status));
-  const acceptRate = rate(acceptedAll.length, decided.length);
+  const insight30 = insights.filter((i) => i.created_at >= since30).length;
   const interactions30 = interactions.filter((i) => i.occurred_at >= since30).length;
   const converted30 = insights.filter((i) => i.status === "converted" && i.updated_at >= since30).length;
+  const acceptedRate = acceptRate(insights);
+  const decided = decidedCount(insights);
 
-  // Funnel
-  const generated = insights.length;
-  const accepted = acceptedAll.length;
-  const contactedCount = acceptedAll.filter((i) => i.customer_id && contacted.has(i.customer_id)).length;
-  const converted = insights.filter((i) => i.status === "converted").length;
+  // Phễu
+  const { generated, accepted, converted } = funnelCounts(insights);
+  const contactedInsights = contactedCount(insights, contacted);
   const funnelMax = Math.max(generated, 1);
 
-  // Theo nguồn
-  const sourceRows = new Map<string, { total: number; leads: number; customers: number; converted: number }>();
-  for (const c of customers) {
-    const key = c.source ?? "Chưa rõ";
-    const row = sourceRows.get(key) ?? { total: 0, leads: 0, customers: 0, converted: 0 };
-    row.total += 1;
-    if (c.stage === "lead") row.leads += 1;
-    else row.customers += 1;
-    sourceRows.set(key, row);
-  }
-  for (const i of insights) {
-    if (i.status !== "converted" || !i.customer_id) continue;
-    const key = sourceOf.get(i.customer_id);
-    if (!key) continue;
-    const row = sourceRows.get(key);
-    if (row) row.converted += 1;
-  }
-  const sources = [...sourceRows.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 8);
-
-  // Accept rate theo weight version
-  const versionRows = versions.map((v) => {
-    const rows = insights.filter((i) => i.weight_version === v.version);
-    const dec = rows.filter((i) => ["accepted", "converted", "dismissed"].includes(i.status));
-    const acc = rows.filter((i) => ["accepted", "converted"].includes(i.status));
-    return { version: v.version, name: v.name, is_active: v.is_active, total: rows.length, acceptRate: rate(acc.length, dec.length) };
-  });
+  // Bảng theo nguồn và theo phiên bản trọng số
+  const sources = sourceTable(customers, insights, sourceOf);
+  const versionRows = versionTable(versions, insights);
 
   // 8 tuần gần nhất
-  const weeks: { key: string; start: Date; created: number; converted: number }[] = [];
-  const thisWeek = weekStart(new Date());
-  for (let k = 7; k >= 0; k--) {
-    const start = new Date(thisWeek.getTime() - k * 7 * DAY);
-    weeks.push({ key: start.toISOString().slice(0, 10), start, created: 0, converted: 0 });
-  }
-  const weekIndex = new Map(weeks.map((w, idx) => [w.key, idx]));
-  for (const i of insights) {
-    const ci = weekIndex.get(weekStart(new Date(i.created_at)).toISOString().slice(0, 10));
-    if (ci !== undefined) weeks[ci].created += 1;
-    if (i.status === "converted") {
-      const ui = weekIndex.get(weekStart(new Date(i.updated_at)).toISOString().slice(0, 10));
-      if (ui !== undefined) weeks[ui].converted += 1;
-    }
-  }
+  const weeks = weeklySeries(buildWeeks(new Date(), 8), insights);
   const weekMax = Math.max(...weeks.map((w) => w.created), 1);
 
   return (
@@ -182,8 +131,8 @@ async function AnalyticsContent() {
       ) : null}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="Insight 30 ngày" value={String(in30.length)} hint={`${generated} trong 90 ngày`} />
-        <Kpi label="Tỷ lệ nhận" value={`${acceptRate}%`} hint={`${acceptedAll.length}/${decided.length} đã quyết định`} />
+        <Kpi label="Insight 30 ngày" value={String(insight30)} hint={`${generated} trong 90 ngày`} />
+        <Kpi label="Tỷ lệ nhận" value={`${acceptedRate}%`} hint={`${accepted}/${decided} đã quyết định`} />
         <Kpi label="Tương tác 30 ngày" value={String(interactions30)} hint={`${interactions.length} trong 90 ngày`} />
         <Kpi label="Đã chốt 30 ngày" value={String(converted30)} hint={`${converted} trong 90 ngày`} />
       </section>
@@ -199,9 +148,9 @@ async function AnalyticsContent() {
         />
         <Bar
           label="Khách đã có tương tác"
-          value={contactedCount}
+          value={contactedInsights}
           max={funnelMax}
-          text={`${contactedCount} · ${rate(contactedCount, accepted)}% của số đã nhận`}
+          text={`${contactedInsights} · ${rate(contactedInsights, accepted)}% của số đã nhận`}
         />
         <Bar label="Đã chốt" value={converted} max={funnelMax} text={`${converted} · ${rate(converted, generated)}%`} />
         <p className="text-xs text-gray-500 pt-1">
